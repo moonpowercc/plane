@@ -69,7 +69,10 @@ const useIssuesView = () => {
     workspaceSlug && projectId && params
       ? () =>
           issuesService.getIssuesWithParams(workspaceSlug as string, projectId as string, params)
-      : null
+      : null,
+    {
+      refreshInterval: 1000,
+    }
   );
 
   const { data: projectArchivedIssues, mutate: mutateProjectArchivedIssues } = useSWR(
