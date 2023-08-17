@@ -32,21 +32,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2.1.0
-        with:
-          registry: "registry.hub.docker.com"
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
-
-      - name: Extract metadata (tags, labels) for Docker (Docker Hub)
-        id: ghmeta
-        uses: docker/metadata-action@v4.3.0
-        with:
-          images: makeplane/plane-backend
-
       - name: Extract metadata (tags, labels) for Docker (Github)
-        id: dkrmeta
+        id: meta
         uses: docker/metadata-action@v4.3.0
         with:
           images: ghcr.io/${{ github.repository }}-backend
@@ -60,18 +47,5 @@ jobs:
           push: true
           cache-from: type=gha
           cache-to: type=gha
-          tags: ${{ steps.ghmeta.outputs.tags }}
-          labels: ${{ steps.ghmeta.outputs.labels }}
-
-      - name: Build and Push to Docker Hub
-        uses: docker/build-push-action@v4.0.0
-        with:
-          context: ./apiserver
-          file: ./apiserver/Dockerfile.api
-          platforms: linux/arm64,linux/amd64
-          push: true
-          cache-from: type=gha
-          cache-to: type=gha
-          tags: ${{ steps.dkrmeta.outputs.tags }}
-          labels: ${{ steps.dkrmeta.outputs.labels }}
-
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
