@@ -35,9 +35,7 @@ x-api-and-worker-env:
 
 services:
   web:
-    build:
-      context: .
-      dockerfile: ./apps/app/Dockerfile.web
+    image: ghcr.io/moonpowercc/plane-frontend:master
     restart: unless-stopped
     command: /usr/local/bin/start.sh apps/app/server.js app
     env_file:
@@ -57,9 +55,7 @@ services:
     - worker
 
   api:
-    build:
-      context: ./apiserver
-      dockerfile: Dockerfile.api
+    image: ghcr.io/moonpowercc/plane-backend:master
     restart: unless-stopped
     command: ./bin/takeoff
     env_file:
@@ -71,9 +67,7 @@ services:
     - redis
 
   worker:
-    build:
-      context: ./apiserver
-      dockerfile: Dockerfile.api
+    image: ghcr.io/moonpowercc/plane-backend:master
     restart: unless-stopped
     command: ./bin/worker
     env_file:
@@ -86,9 +80,7 @@ services:
     - redis
 
   beat-worker:
-    build:
-      context: ./apiserver
-      dockerfile: Dockerfile.api
+    image: ghcr.io/moonpowercc/plane-backend:master
     restart: unless-stopped
     command: ./bin/beat
     env_file:
