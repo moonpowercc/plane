@@ -1,15 +1,22 @@
 # Python imports
+import asyncio
 import json
-import requests
+import traceback
+from functools import partial
+from textwrap import dedent
+from typing import Any, Optional
 
+import requests
+import telegram
 # Django imports
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
-
 # Third Party imports
 from celery import shared_task
 from sentry_sdk import capture_exception
+from telegram.constants import ParseMode
+from telegram.helpers import escape_markdown
 
 # Module imports
 from plane.db.models import (
@@ -959,7 +966,6 @@ def update_link_activity(
 def delete_link_activity(
     requested_data, current_instance, issue_id, project, actor, issue_activities
 ):
-
     current_instance = (
         json.loads(current_instance) if current_instance is not None else None
     )
@@ -1018,6 +1024,85 @@ def delete_attachment_activity(
     )
 
 
+def telegram_notify(type: str, actor_id: str, issue_id: str, requested_data: str, current_instance: str):
+    chat_id = settings.TELEGRAM_CHAT_ID
+    if not chat_id: return
+
+    if not type.startswith("issue.activity"): return
+
+    e = partial(escape_markdown, version=2)
+
+    def issue_slug(issue: Issue) -> str:
+        return f"{issue.project.identifier}-{issue.sequence_id}"
+
+    def issue_link(issue: Issue) -> str:
+        return f"[{e(issue_slug(issue))}]({settings.WEB_URL}/{issue.workspace.slug}/projects/{issue.project.id}/issues/{issue.id})"
+
+    def field_changed(name: str, old: Any, new: Any) -> Optional[str]:
+        return f"__*{name}*__: {e(str(old))} \=\> {e(str(new))}"
+
+    requested_data = json.loads(requested_data)
+
+    issue = Issue.objects.get(pk=issue_id)
+    action = type.removeprefix("issue.activity.").capitalize()
+
+    message = dedent(f"""
+    __Issue {e(action)}__
+    {issue_link(issue)}
+    *{e(issue.name)}*
+    """)
+
+    if action == "Updated":
+        current_instance = json.loads(current_instance)
+        changes = []
+
+        if "state" in requested_data:
+            old_state: State = State.objects.get(pk=current_instance["state"])
+            new_state: State = State.objects.get(pk=requested_data["state"])
+            changes.append(field_changed("State", old_state.name, new_state.name))
+
+        if "priority" in requested_data:
+            changes.append(field_changed("Priority", current_instance["priority"], requested_data["priority"]))
+
+        if "parent" in requested_data:
+            parent_id = requested_data["parent"]
+            changes.append(f"__*Parent*__: {issue_link(Issue.objects.get(pk=parent_id)) if parent_id else None}")
+
+        if "assignees_list" in requested_data:
+            new_assignees = requested_data["assignees_list"]
+            old_assignees = current_instance["assignees"]
+            for added in set(new_assignees) - set(old_assignees):
+                user = User.objects.get(pk=added)
+                changes.append(f"__*Assigned*__: {e(user.first_name)} {e(user.last_name)}")
+            for removed in set(old_assignees) - set(new_assignees):
+                user = User.objects.get(pk=removed)
+                changes.append(f"__*Unassigned*__: {e(user.first_name)} {e(user.last_name)}")
+
+        if "blocks_list" in requested_data:
+            def map_fn(issue_id):
+                issue = Issue.objects.get(pk=issue_id)
+                return issue_link(issue)
+
+            changes.append(f"""__*Blocked by*__: {", ".join(map(map_fn, requested_data["blocks_list"]))}""")
+
+        if "description_html" in requested_data:
+            if requested_data["description_html"] == current_instance["description_html"]:
+                return
+            changes.append("__*Description changed*__")
+
+        if changes:
+            message += "\n" + "\n".join(changes)
+
+    actor = User.objects.get(pk=actor_id)
+    message += f"\n__*Actor*__: {e(actor.first_name)} {e(actor.last_name)}"
+
+    with asyncio.Runner() as runner:
+        bot = telegram.Bot(settings.TELEGRAM_BOT_TOKEN)
+        runner.run(bot.send_message(int(chat_id),
+                                    message,
+                                    parse_mode=ParseMode.MARKDOWN_V2))
+
+
 # Receive message from room group
 @shared_task
 def issue_activity(
@@ -1029,6 +1114,14 @@ def issue_activity(
     project_id,
     subscriber=True,
 ):
+    print(requested_data)
+    print(current_instance)
+
+    try:
+        telegram_notify(type, actor_id, issue_id, requested_data, current_instance)
+    except:
+        traceback.print_exc()
+
     try:
         issue_activities = []
 
