@@ -1059,9 +1059,19 @@ def telegram_notify(type: str, actor_id: str, issue_id: str, requested_data: str
         if "state" in requested_data:
             old_state: State = State.objects.get(pk=current_instance["state"])
             new_state: State = State.objects.get(pk=requested_data["state"])
+            if new_state.name == "Done":
+                changes.append("🔥🔥🔥")
             changes.append(field_changed("State", old_state.name, new_state.name))
 
         if "priority" in requested_data:
+            if requested_data["priority"] == "low":
+                changes.append("🟢")
+            elif requested_data["priority"] == "medium":
+                changes.append("🟡🟡")
+            elif requested_data["priority"] == "high":
+                changes.append("🟠🟠🟠")
+            elif requested_data["priority"] == "urgent":
+                changes.append("🔴🔴🔴🔴")
             changes.append(field_changed("Priority", current_instance["priority"], requested_data["priority"]))
 
         if "parent" in requested_data:
